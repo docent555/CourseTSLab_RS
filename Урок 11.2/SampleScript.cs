@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using TSLab.Script;
 using TSLab.Script.Handlers;
 using TSLab.Script.Helpers;
@@ -17,6 +18,7 @@ namespace Урок_11._2
         public OptimProperty Take = new OptimProperty(2, 0.25, 5, 0.25);
 
         public OptimProperty PosAdd = new OptimProperty(1, 0.25, 5, 0.25);
+        public OptimProperty StopMove = new OptimProperty(0.75, 0.25, 5, 0.25);
         #endregion
 
         public void Execute(IContext ctx, ISecurity sec)
@@ -37,17 +39,26 @@ namespace Урок_11._2
 
 
             #region Торговая логика --------------------------------------------------------
-            for (var i = HighPeriod + 1; i < ctx.BarsCount; i++)
+
+            var count = ctx.BarsCount;
+            if (!ctx.IsLastBarClosed) count--;            
+
+            var stopMoveFlag = false;
+
+            var tradeStart = Math.Max(ctx.TradeFromBar, HighPeriod + 1);
+            for (var i = tradeStart; i < count; i++)
             {
                 var leb = sec.Positions.GetLastActiveForSignal("LEB", i);
                 var lea = sec.Positions.GetLastActiveForSignal("LEA", i);
-                
+                var led = sec.Positions.GetLastActiveForSignal("LED", i);
+
                 // отобрали позиции с сигналом вохода начинающимся на LE
                 var lePos = sec.Positions.GetActiveForBar(i).Where(p => p.EntrySignalName.StartsWith("LE")).ToList();
 
                 if (leb == null)
                 {
                     sec.Positions.BuyIfGreater(i + 1, 1, highest[i], Slippage, "LEB");
+                    stopMoveFlag = false;
                 }
                 else
                 {
@@ -60,16 +71,31 @@ namespace Урок_11._2
 
                     var lePos1 = sec.Positions.GetActiveForBar(i).Where(p => p.EntrySignalName.StartsWith("LE")).ToList();
 
-                    //  выставить стоп и тейк
+                    
                     var avgEntryPrice = lePos.AvgEntryPrice();
-                    var stop = avgEntryPrice * (1 - Stop / 100.0);
-                    var take = avgEntryPrice * (1 + Take / 100.0);
 
-                    foreach(var p in lePos)
+                    // выставить тейк
+                    var take = avgEntryPrice * (1 + Take / 100.0);
+                    lePos.ForEach(p => p.CloseAtProfit(i + 1, take, Slippage, "LXP")); // из TSLab.Utility
+
+
+                    // выставить стоп
+                    var stopMovePrice = avgEntryPrice * (1 + StopMove / 100.0);
+                    if (sec.HighPrices[i] > stopMovePrice || stopMoveFlag)
                     {
-                        p.CloseAtStop(i + 1, stop, Slippage, "LXS");
-                        p.CloseAtProfit(i + 1, take, Slippage, "LXP");
+                        stopMoveFlag = true;
+                        var stop = avgEntryPrice;
+                        lePos.ForEach(p => p.CloseAtStop(i + 1, stop, Slippage, "LXS"));
                     }
+                    else
+                    {
+                        var stop = avgEntryPrice * (1 - Stop / 100.0);
+                        lePos.ForEach(p => p.CloseAtStop(i + 1, stop, Slippage, "LXS"));
+                    }
+
+                    
+
+                   
                 }
             }
             #endregion
