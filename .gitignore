@@ -1,0 +1,7 @@
+.vs/
+*.exe
+CourseTSLab_RS/bin/Debug/net8.0/CourseTSLab_RS.deps.json
+CourseTSLab_RS/bin/
+CourseTSLab_RS/obj/
+*/bin/*
+*/obj/*
